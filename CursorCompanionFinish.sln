@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36811.4
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CursorCompanionFinish", "CursorCompanionFinish\CursorCompanionFinish.csproj", "{74779F0B-229E-429E-8D38-420295D1F18C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{74779F0B-229E-429E-8D38-420295D1F18C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{74779F0B-229E-429E-8D38-420295D1F18C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{74779F0B-229E-429E-8D38-420295D1F18C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{74779F0B-229E-429E-8D38-420295D1F18C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {869DC451-EAFA-4912-99D9-7C603E80D58F}
+	EndGlobalSection
+EndGlobal
