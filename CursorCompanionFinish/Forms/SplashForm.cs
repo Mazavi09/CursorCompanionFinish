@@ -11,8 +11,7 @@ namespace CursorCompanionFinish
     {
         public SplashForm()
         {
-            InitializeComponent();
-            InitializeUI();
+            InitializeUI(); // ← ТОЛЬКО ЭТО!
         }
 
         private void RestoreSystemWallpaper()

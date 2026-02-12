@@ -36,29 +36,22 @@ namespace CursorCompanionFinish
 
             Debug.WriteLine("==========================================");
             Debug.WriteLine("НАЧАЛО РАБОТЫ ПРОГРАММЫ");
-            Debug.WriteLine("Время: " + DateTime.Now.ToString("HH:mm:ss"));
             Debug.WriteLine("Application.StartupPath: " + Application.StartupPath);
-            Debug.WriteLine("FixedBasePath: " + _fixedBasePath);
             Debug.WriteLine("==========================================");
 
             CreateFolders();
             CheckFiles();
 
-            InitializeComponent();
+            // InitializeComponent(); // ← ЭТО УДАЛИТЬ! ОН В .Designer.cs!
+
             InitializeServices();
             InitializeUI();
             LoadSkins();
-
-            if (_skins == null)
-            {
-                Debug.WriteLine("ОШИБКА: _skins не был инициализирован!");
-            }
-
             LoadSettings();
             SetupTrayIcon();
-
             UpdateStatus("Готов к работе");
         }
+
 
         private void CreateFolders()
         {
@@ -940,6 +933,9 @@ namespace CursorCompanionFinish
                 UpdateStatus("Приложение восстановлено из трея");
             };
         }
+
+      
+
 
         private void BtnActivate_Click(object sender, EventArgs e)
         {

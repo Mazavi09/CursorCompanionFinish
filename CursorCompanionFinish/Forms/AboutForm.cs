@@ -13,8 +13,7 @@ namespace CursorCompanionFinish
 
         public AboutForm()
         {
-            InitializeComponent();
-            InitializeUI();
+            InitializeUI(); // ← ТОЛЬКО ЭТО!
         }
 
         private void InitializeUI()

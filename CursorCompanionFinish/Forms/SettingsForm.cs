@@ -30,8 +30,7 @@ namespace CursorCompanionFinish
         public SettingsForm(Models.Settings settings)
         {
             _settings = settings;
-            InitializeComponent();
-            InitializeUI();
+            InitializeUI(); // ← ТОЛЬКО ЭТО!
             LoadSettingsToUI();
         }
 
