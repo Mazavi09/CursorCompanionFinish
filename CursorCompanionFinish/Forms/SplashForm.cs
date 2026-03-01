@@ -139,7 +139,7 @@ namespace CursorCompanionFinish
                 {
                     e.Graphics.FillRectangle(brush, this.ClientRectangle);
                 }
-                 
+
             };
 
             // ========== ДОПОЛНИТЕЛЬНО: делаем ВСЕ надписи прозрачными ==========
@@ -151,7 +151,23 @@ namespace CursorCompanionFinish
                     ctrl.BackColor = Color.Transparent;
                 }
             }
+
+            // ========== УСТАНОВКА ИКОНКИ ПРИЛОЖЕНИЯ ==========
+            try
+            {
+                string iconPath = Path.Combine(Application.StartupPath, "CCicon.ico");
+                if (File.Exists(iconPath))
+                {
+                    this.Icon = new Icon(iconPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Ошибка загрузки иконки в SplashForm: " + ex.Message);
+            }
+            Program.SetIconForForm(this);
         }
+
 
         /// <summary>
         /// Создаёт запасной логотип, если файл не найден
@@ -234,6 +250,20 @@ namespace CursorCompanionFinish
                 newPath.CloseFigure();
                 btn.Region = new Region(newPath);
             };
+        }
+
+        private void InitializeComponent()
+        {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(SplashForm));
+            this.SuspendLayout();
+            // 
+            // SplashForm
+            // 
+            this.ClientSize = new System.Drawing.Size(282, 253);
+            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
+            this.Name = "SplashForm";
+            this.ResumeLayout(false);
+
         }
     }
 }

@@ -32,6 +32,8 @@ namespace CursorCompanionFinish
             _settings = settings;
             InitializeUI(); // ← ТОЛЬКО ЭТО!
             LoadSettingsToUI();
+
+             Program.SetIconForForm(this);
         }
 
         // ========== ОСНОВНОЙ МЕТОД ОТРИСОВКИ ==========

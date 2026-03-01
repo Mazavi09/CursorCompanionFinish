@@ -1,7 +1,8 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Drawing;
-using System.Windows.Forms;
 using System.IO;
+using System.Windows.Forms;
 
 namespace CursorCompanionFinish
 {
@@ -130,6 +131,22 @@ namespace CursorCompanionFinish
             btnClose.Click += (s, e) => this.Close();
 
             this.Controls.Add(btnClose);
+
+            // ========== УСТАНОВКА ИКОНКИ ПРИЛОЖЕНИЯ ==========
+            try
+            {
+                string iconPath = Path.Combine(Application.StartupPath, "CCicon.ico");
+                if (File.Exists(iconPath))
+                {
+                    this.Icon = new Icon(iconPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Ошибка загрузки иконки в HelpForm: " + ex.Message);
+            }
+            Program.SetIconForForm(this);
         }
-    }
+       
+       }
 }

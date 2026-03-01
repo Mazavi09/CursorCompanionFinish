@@ -50,8 +50,154 @@ namespace CursorCompanionFinish
             LoadSettings();
             SetupTrayIcon();
             UpdateStatus("Готов к работе");
+
+            Program.SetIconForForm(this);
         }
 
+        private void FindSkinsSource_Click(object sender, EventArgs e)
+        {
+            string message = "=== ПОИСК ИСТОЧНИКА СКИНОВ ===\n\n";
+
+            // 1. Проверяем все возможные пути
+            string[] possibleBasePaths = {
+        AppDomain.CurrentDomain.BaseDirectory,
+        Application.StartupPath,
+        Directory.GetCurrentDirectory(),
+        Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location),
+        @"C:\Users\user\Desktop\Cursor Companion\CursorCompanionFinish\CursorCompanionFinish\bin\Debug",
+        @"C:\Users\user\Desktop\Cursor Companion\CursorCompanionFinish\CursorCompanionFinish",
+        @"C:\Users\user\Desktop\Cursor Companion\CursorCompanionFinish",
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        Path.GetTempPath()
+    };
+
+            message += "Проверяем возможные пути:\n\n";
+
+            foreach (string basePath in possibleBasePaths.Distinct())
+            {
+                string skinPath = Path.Combine(basePath, "Skins");
+                message += $"Путь: {skinPath}\n";
+                message += $"  Существует: {Directory.Exists(skinPath)}\n";
+
+                if (Directory.Exists(skinPath))
+                {
+                    var skinDirs = Directory.GetDirectories(skinPath, "skin_*");
+                    message += $"  Найдено папок скинов: {skinDirs.Length}\n";
+
+                    if (skinDirs.Length > 0)
+                    {
+                        message += $"  ПЕРВЫЙ СКИН: {skinDirs[0]}\n";
+                        var files = Directory.GetFiles(skinDirs[0], "*.png");
+                        message += $"  Файлов в первом скине: {files.Length}\n";
+                    }
+                }
+                message += "\n";
+            }
+
+            // 2. Проверяем реестр (может быть там прописан путь)
+            message += "Проверка реестра:\n";
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\CursorCompanion"))
+                {
+                    if (key != null)
+                    {
+                        string skinPathFromRegistry = key.GetValue("SkinPath") as string;
+                        message += $"Путь из реестра: {skinPathFromRegistry}\n";
+                    }
+                    else
+                    {
+                        message += "Ключ реестра не найден\n";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                message += $"Ошибка чтения реестра: {ex.Message}\n";
+            }
+
+            // 3. Проверяем файл конфигурации
+            message += "\nПроверка файлов конфигурации:\n";
+            string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CursorCompanionFinish.exe.config");
+            if (File.Exists(configPath))
+            {
+                message += $"Найден config файл: {configPath}\n";
+                try
+                {
+                    string config = File.ReadAllText(configPath);
+                    if (config.Contains("Skins"))
+                    {
+                        message += "В config файле есть упоминание Skins\n";
+                    }
+                }
+                catch { }
+            }
+            else
+            {
+                message += "Config файл не найден\n";
+            }
+
+            // 4. Проверяем временные папки
+            message += "\nПроверка временных папок:\n";
+            string tempPath = Path.GetTempPath();
+            string[] possibleTempPaths = {
+        Path.Combine(tempPath, "CursorCompanion"),
+        Path.Combine(tempPath, "CursorCompanionFinish"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CursorCompanion"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CursorCompanion")
+    };
+
+            foreach (string tempFolder in possibleTempPaths)
+            {
+                string skinTempPath = Path.Combine(tempFolder, "Skins");
+                message += $"Путь: {skinTempPath}\n";
+                message += $"  Существует: {Directory.Exists(skinTempPath)}\n";
+                if (Directory.Exists(skinTempPath))
+                {
+                    var dirs = Directory.GetDirectories(skinTempPath, "skin_*");
+                    message += $"  Найдено скинов: {dirs.Length}\n";
+                }
+            }
+
+            // 5. Запускаем поиск по всем дискам (осторожно, может быть долго)
+            message += "\nБЫСТРЫЙ ПОИСК ПО ДИСКУ C:\n";
+            try
+            {
+                string[] searchPaths = {
+            @"C:\Users\user\Desktop",
+            @"C:\Users\user\Documents",
+            @"C:\Users\user\Downloads",
+            @"C:\Program Files",
+            @"C:\Program Files (x86)"
+        };
+
+                foreach (string searchPath in searchPaths)
+                {
+                    if (Directory.Exists(searchPath))
+                    {
+                        try
+                        {
+                            var skinFolders = Directory.GetDirectories(searchPath, "skin_*", SearchOption.AllDirectories);
+                            if (skinFolders.Length > 0)
+                            {
+                                message += $"Найдены папки skin_ в {searchPath}:\n";
+                                foreach (var folder in skinFolders.Take(3))
+                                {
+                                    message += $"  {folder}\n";
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                message += $"Ошибка поиска: {ex.Message}\n";
+            }
+
+            MessageBox.Show(message, "Источник скинов", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
 
         private void CreateFolders()
         {
@@ -287,6 +433,14 @@ namespace CursorCompanionFinish
             btnDebug.Click += (s, e) => ShowDebugInfo();
             flowPanel.Controls.Add(btnDebug);
 
+            // ========== ВОТ СЮДА ДОБАВЬТЕ НОВУЮ КНОПКУ ==========
+            Button btnFindSkins = CreateNavButton("🔍 Найти скины");
+            btnFindSkins.BackColor = Color.FromArgb(200, 100, 100); // красноватый цвет
+            btnFindSkins.Click += FindSkinsSource_Click;
+            flowPanel.Controls.Add(btnFindSkins);
+
+
+
             // Панель для нижних кнопок
             Panel bottomPanel = new Panel();
             bottomPanel.Dock = DockStyle.Bottom;
@@ -463,9 +617,54 @@ namespace CursorCompanionFinish
                 info += "preview.png существует: " + File.Exists(previewPath) + "\n";
                 var spriteFiles = Directory.GetFiles(skinPath, "sprite_*.png");
                 info += "Спрайтов найдено: " + spriteFiles.Length + "\n";
+                foreach (string file in spriteFiles)
+                {
+                    info += "  - " + Path.GetFileName(file) + "\n";
+                }
             }
 
             info += "\n6. Текущий скин: " + (_settings?.CurrentSkinId.ToString() ?? "не задан");
+
+            // ДОБАВЛЯЕМ ПОИСК ПО ВСЕМ ВОЗМОЖНЫМ ПУТЯМ
+            info += "\n\n=== ПОИСК ВСЕХ ПАПОК SKINS ===\n\n";
+
+            string[] possibleRoots = {
+        @"C:\Users\user\Desktop",
+        @"C:\Users\user\Documents",
+        @"C:\Users\user\Downloads",
+        @"C:\Program Files",
+        @"C:\Program Files (x86)",
+        @"D:\",
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+    };
+
+            foreach (string root in possibleRoots)
+            {
+                if (Directory.Exists(root))
+                {
+                    try
+                    {
+                        var skinFolders = Directory.GetDirectories(root, "skin_*", SearchOption.AllDirectories);
+                        if (skinFolders.Length > 0)
+                        {
+                            info += $"Найдены папки в {root}:\n";
+                            foreach (string folder in skinFolders.Take(3))
+                            {
+                                info += $"  {folder}\n";
+                                // Проверяем содержимое
+                                if (Directory.Exists(folder))
+                                {
+                                    var files = Directory.GetFiles(folder, "*.png");
+                                    info += $"    файлов PNG: {files.Length}\n";
+                                }
+                            }
+                            info += "\n";
+                        }
+                    }
+                    catch { }
+                }
+            }
 
             MessageBox.Show(info, "Отладочная информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }

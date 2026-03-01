@@ -1,4 +1,6 @@
-﻿namespace CursorCompanionFinish
+﻿using System.Drawing;
+
+namespace CursorCompanionFinish
 {
     partial class MainForm
     {
@@ -16,7 +18,7 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(800, 600);
-            this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
+            this.Icon = new Icon("CCicon.ico");
             this.Name = "MainForm";
             this.Text = "MainForm";
             this.ResumeLayout(false);

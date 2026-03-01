@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
@@ -52,13 +53,13 @@ namespace CursorCompanionFinish
             try
             {
                 string[] possiblePaths = {
-                    "CCicon.png",
-                    Path.Combine(Application.StartupPath, "CCicon.png"),
-                    Path.Combine(Application.StartupPath, "Resources", "CCicon.png"),
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CCicon.png"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "CCicon.png"),
-                    Path.Combine(Directory.GetCurrentDirectory(), "Resources", "CCicon.png")
-                };
+            "CCicon.png",
+            Path.Combine(Application.StartupPath, "CCicon.png"),
+            Path.Combine(Application.StartupPath, "Resources", "CCicon.png"),
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CCicon.png"),
+            Path.Combine(Directory.GetCurrentDirectory(), "CCicon.png"),
+            Path.Combine(Directory.GetCurrentDirectory(), "Resources", "CCicon.png")
+        };
 
                 string iconPath = null;
                 foreach (string path in possiblePaths)
@@ -154,7 +155,23 @@ namespace CursorCompanionFinish
 
             btnClose.Click += (s, e) => this.Close();
             this.Controls.Add(btnClose);
-        }
+
+            // ========== УСТАНОВКА ИКОНКИ ПРИЛОЖЕНИЯ ==========
+            try
+            {
+                string iconPath = Path.Combine(Application.StartupPath, "CCicon.ico");
+                if (File.Exists(iconPath))
+                {
+                    this.Icon = new Icon(iconPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Ошибка загрузки иконки в AboutForm: " + ex.Message);
+            }
+
+            Program.SetIconForForm(this);
+        }   
 
         // ========== МЕТОД ДЛЯ ЗАКРУГЛЕНИЯ КНОПОК ==========
         private void MakeButtonRounded(Button button, int radius)
