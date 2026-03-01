@@ -6,8 +6,8 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using Models = CursorCompanionFinish.Models; // Псевдоним
-using Services = CursorCompanionFinish.Services; // Псевдоним
+using Models = CursorCompanionFinish.Models;
+using Services = CursorCompanionFinish.Services;
 
 namespace CursorCompanionFinish
 {
@@ -15,12 +15,10 @@ namespace CursorCompanionFinish
     {
         private Services.WallpaperService _wallpaperService;
         private Services.LogService _logService;
-        private Models.Settings _settings; // Используем Models.Settings
-        private List<Models.PetSkin> _skins; // Используем Models.PetSkin
+        private Models.Settings _settings;
+        private List<Models.PetSkin> _skins;
         private PetAI _currentPet;
         private NotifyIcon _trayIcon;
-
-        // ДОБАВЬТЕ ЭТУ СТРОКУ:
         private string _fixedBasePath;
 
         // Элементы интерфейса
@@ -34,43 +32,171 @@ namespace CursorCompanionFinish
 
         public MainForm()
         {
-            // ДОБАВЬТЕ ЭТУ СТРОКУ:
             _fixedBasePath = Application.StartupPath;
 
-            // ОТЛАДОЧНАЯ ИНФОРМАЦИЯ ПЕРВЫМ ДЕЛОМ
             Debug.WriteLine("==========================================");
             Debug.WriteLine("НАЧАЛО РАБОТЫ ПРОГРАММЫ");
-            Debug.WriteLine("Время: " + DateTime.Now.ToString("HH:mm:ss"));
-            Debug.WriteLine("Текущая директория: " + Directory.GetCurrentDirectory());
-            Debug.WriteLine("BaseDirectory: " + AppDomain.CurrentDomain.BaseDirectory);
             Debug.WriteLine("Application.StartupPath: " + Application.StartupPath);
-            Debug.WriteLine("Environment.CurrentDirectory: " + Environment.CurrentDirectory);
-            Debug.WriteLine("FixedBasePath: " + _fixedBasePath); // Добавьте эту строку
             Debug.WriteLine("==========================================");
 
-            // ... остальной код конструктора
-
-
-
-            // Сначала создаем папки и проверяем файлы
             CreateFolders();
             CheckFiles();
 
-            InitializeComponent();
+            // InitializeComponent(); // ← ЭТО УДАЛИТЬ! ОН В .Designer.cs!
+
             InitializeServices();
             InitializeUI();
             LoadSkins();
-
-            // ДОБАВЬТЕ ЭТУ ПРОВЕРКУ ДЛЯ ДЕБАГА
-            if (_skins == null)
-            {
-                Debug.WriteLine("ОШИБКА: _skins не был инициализирован!");
-            }
-
             LoadSettings();
             SetupTrayIcon();
-
             UpdateStatus("Готов к работе");
+
+            Program.SetIconForForm(this);
+        }
+
+        private void FindSkinsSource_Click(object sender, EventArgs e)
+        {
+            string message = "=== ПОИСК ИСТОЧНИКА СКИНОВ ===\n\n";
+
+            // 1. Проверяем все возможные пути
+            string[] possibleBasePaths = {
+        AppDomain.CurrentDomain.BaseDirectory,
+        Application.StartupPath,
+        Directory.GetCurrentDirectory(),
+        Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location),
+        @"C:\Users\user\Desktop\Cursor Companion\CursorCompanionFinish\CursorCompanionFinish\bin\Debug",
+        @"C:\Users\user\Desktop\Cursor Companion\CursorCompanionFinish\CursorCompanionFinish",
+        @"C:\Users\user\Desktop\Cursor Companion\CursorCompanionFinish",
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        Path.GetTempPath()
+    };
+
+            message += "Проверяем возможные пути:\n\n";
+
+            foreach (string basePath in possibleBasePaths.Distinct())
+            {
+                string skinPath = Path.Combine(basePath, "Skins");
+                message += $"Путь: {skinPath}\n";
+                message += $"  Существует: {Directory.Exists(skinPath)}\n";
+
+                if (Directory.Exists(skinPath))
+                {
+                    var skinDirs = Directory.GetDirectories(skinPath, "skin_*");
+                    message += $"  Найдено папок скинов: {skinDirs.Length}\n";
+
+                    if (skinDirs.Length > 0)
+                    {
+                        message += $"  ПЕРВЫЙ СКИН: {skinDirs[0]}\n";
+                        var files = Directory.GetFiles(skinDirs[0], "*.png");
+                        message += $"  Файлов в первом скине: {files.Length}\n";
+                    }
+                }
+                message += "\n";
+            }
+
+            // 2. Проверяем реестр (может быть там прописан путь)
+            message += "Проверка реестра:\n";
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\CursorCompanion"))
+                {
+                    if (key != null)
+                    {
+                        string skinPathFromRegistry = key.GetValue("SkinPath") as string;
+                        message += $"Путь из реестра: {skinPathFromRegistry}\n";
+                    }
+                    else
+                    {
+                        message += "Ключ реестра не найден\n";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                message += $"Ошибка чтения реестра: {ex.Message}\n";
+            }
+
+            // 3. Проверяем файл конфигурации
+            message += "\nПроверка файлов конфигурации:\n";
+            string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CursorCompanionFinish.exe.config");
+            if (File.Exists(configPath))
+            {
+                message += $"Найден config файл: {configPath}\n";
+                try
+                {
+                    string config = File.ReadAllText(configPath);
+                    if (config.Contains("Skins"))
+                    {
+                        message += "В config файле есть упоминание Skins\n";
+                    }
+                }
+                catch { }
+            }
+            else
+            {
+                message += "Config файл не найден\n";
+            }
+
+            // 4. Проверяем временные папки
+            message += "\nПроверка временных папок:\n";
+            string tempPath = Path.GetTempPath();
+            string[] possibleTempPaths = {
+        Path.Combine(tempPath, "CursorCompanion"),
+        Path.Combine(tempPath, "CursorCompanionFinish"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CursorCompanion"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "CursorCompanion")
+    };
+
+            foreach (string tempFolder in possibleTempPaths)
+            {
+                string skinTempPath = Path.Combine(tempFolder, "Skins");
+                message += $"Путь: {skinTempPath}\n";
+                message += $"  Существует: {Directory.Exists(skinTempPath)}\n";
+                if (Directory.Exists(skinTempPath))
+                {
+                    var dirs = Directory.GetDirectories(skinTempPath, "skin_*");
+                    message += $"  Найдено скинов: {dirs.Length}\n";
+                }
+            }
+
+            // 5. Запускаем поиск по всем дискам (осторожно, может быть долго)
+            message += "\nБЫСТРЫЙ ПОИСК ПО ДИСКУ C:\n";
+            try
+            {
+                string[] searchPaths = {
+            @"C:\Users\user\Desktop",
+            @"C:\Users\user\Documents",
+            @"C:\Users\user\Downloads",
+            @"C:\Program Files",
+            @"C:\Program Files (x86)"
+        };
+
+                foreach (string searchPath in searchPaths)
+                {
+                    if (Directory.Exists(searchPath))
+                    {
+                        try
+                        {
+                            var skinFolders = Directory.GetDirectories(searchPath, "skin_*", SearchOption.AllDirectories);
+                            if (skinFolders.Length > 0)
+                            {
+                                message += $"Найдены папки skin_ в {searchPath}:\n";
+                                foreach (var folder in skinFolders.Take(3))
+                                {
+                                    message += $"  {folder}\n";
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                message += $"Ошибка поиска: {ex.Message}\n";
+            }
+
+            MessageBox.Show(message, "Источник скинов", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void CreateFolders()
@@ -104,7 +230,6 @@ namespace CursorCompanionFinish
             Debug.WriteLine("Путь к Backgrounds: " + backgroundsPath);
             Debug.WriteLine("Путь к Skins: " + skinsPath);
 
-            // Проверяем Backgrounds
             if (Directory.Exists(backgroundsPath))
             {
                 var files = Directory.GetFiles(backgroundsPath, "*.png");
@@ -119,7 +244,6 @@ namespace CursorCompanionFinish
                 Debug.WriteLine("Папка Backgrounds не найдена по пути: " + backgroundsPath);
             }
 
-            // Проверяем Skins
             if (Directory.Exists(skinsPath))
             {
                 for (int i = 1; i <= 7; i++)
@@ -147,7 +271,6 @@ namespace CursorCompanionFinish
 
         private string GetCorrectPath(string relativePath)
         {
-            // Пробуем несколько возможных путей
             string[] possiblePaths = {
                 relativePath,
                 Path.Combine(Directory.GetCurrentDirectory(), relativePath),
@@ -173,13 +296,76 @@ namespace CursorCompanionFinish
         {
             _wallpaperService = new Services.WallpaperService();
             _logService = new Services.LogService();
-            _settings = new Models.Settings(); // Models.Settings
+            _settings = new Models.Settings();
         }
 
+        // ========== ЕДИНЫЙ СТИЛЬ: МЕТОД СОЗДАНИЯ КНОПОК ==========
+        private Button CreateNavButton(string text)
+        {
+            Button btn = new Button();
+            btn.Text = text;
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.ForeColor = Color.White;
+            btn.BackColor = Color.Transparent;
+            btn.Size = new Size(150, 45);
+            btn.Margin = new Padding(0, 0, 0, 10);
+            btn.TextAlign = ContentAlignment.MiddleLeft;
+            btn.Font = new Font("Segoe UI", 10, FontStyle.Bold);
+            btn.FlatAppearance.BorderSize = 0;
+            btn.Cursor = Cursors.Hand;
+
+            // Закругление
+            MakeButtonRounded(btn, 12);
+
+            // Эффект при наведении
+            btn.MouseEnter += (s, e) =>
+            {
+                if (btn.BackColor == Color.Transparent)
+                    btn.BackColor = Color.FromArgb(60, 60, 70);
+            };
+            btn.MouseLeave += (s, e) =>
+            {
+                if (btn.BackColor != Color.FromArgb(154, 75, 255) &&
+                    btn.BackColor != Color.FromArgb(59, 200, 207) &&
+                    btn.BackColor != Color.FromArgb(254, 185, 182))
+                    btn.BackColor = Color.Transparent;
+            };
+
+            return btn;
+        }
+
+        // ========== МЕТОД ЗАКРУГЛЕНИЯ КНОПОК ==========
+        private void MakeButtonRounded(Button button, int radius)
+        {
+            button.FlatStyle = FlatStyle.Flat;
+            button.FlatAppearance.BorderSize = 0;
+
+            var path = new GraphicsPath();
+            path.AddArc(0, 0, radius, radius, 180, 90);
+            path.AddArc(button.Width - radius, 0, radius, radius, 270, 90);
+            path.AddArc(button.Width - radius, button.Height - radius, radius, radius, 0, 90);
+            path.AddArc(0, button.Height - radius, radius, radius, 90, 90);
+            path.CloseFigure();
+            button.Region = new Region(path);
+
+            button.SizeChanged += (s, e) =>
+            {
+                var btn = s as Button;
+                if (btn == null) return;
+
+                var newPath = new GraphicsPath();
+                newPath.AddArc(0, 0, radius, radius, 180, 90);
+                newPath.AddArc(btn.Width - radius, 0, radius, radius, 270, 90);
+                newPath.AddArc(btn.Width - radius, btn.Height - radius, radius, radius, 0, 90);
+                newPath.AddArc(0, btn.Height - radius, radius, radius, 90, 90);
+                newPath.CloseFigure();
+                btn.Region = new Region(newPath);
+            };
+        }
 
         private void InitializeUI()
         {
-            // Настройка формы - НА ВЕСЬ ЭКРАН ПО ВЫСОТЕ
+            // Настройка формы
             this.Text = "Cursor Companion";
             Screen screen = Screen.PrimaryScreen;
             Rectangle screenBounds = screen.Bounds;
@@ -194,7 +380,7 @@ namespace CursorCompanionFinish
             navigationPanel.BackColor = Color.FromArgb(45, 45, 48);
             navigationPanel.Dock = DockStyle.Left;
             navigationPanel.Width = 180;
-            navigationPanel.Padding = new Padding(15, 20, 15, 20); // Отступы внутри панели
+            navigationPanel.Padding = new Padding(15, 20, 15, 20);
 
             // FlowLayoutPanel для автоматического расположения кнопок
             FlowLayoutPanel flowPanel = new FlowLayoutPanel();
@@ -204,8 +390,9 @@ namespace CursorCompanionFinish
             flowPanel.AutoScroll = true;
             flowPanel.BackColor = Color.Transparent;
 
-            // 1. Кнопка "Проверить фоны"
-            Button btnCheckBackgrounds = CreateNavButton("🎨 Проверить фоны");
+            // 1. Кнопка "Проверить фоны" - УВЕЛИЧИЛИ ШИРИНУ
+            Button btnCheckBackgrounds = CreateNavButton("🎨 Проверить\nфоны"); // перенос строки
+            btnCheckBackgrounds.Size = new Size(150, 50); // шире и выше
             btnCheckBackgrounds.BackColor = Color.FromArgb(100, 100, 200);
             btnCheckBackgrounds.Click += (s, e) => CheckAllBackgrounds();
             flowPanel.Controls.Add(btnCheckBackgrounds);
@@ -246,42 +433,62 @@ namespace CursorCompanionFinish
             btnDebug.Click += (s, e) => ShowDebugInfo();
             flowPanel.Controls.Add(btnDebug);
 
-            // Панель для нижних кнопок (Применить, Свернуть и На главную)
+            // ========== ВОТ СЮДА ДОБАВЬТЕ НОВУЮ КНОПКУ ==========
+            Button btnFindSkins = CreateNavButton("🔍 Найти скины");
+            btnFindSkins.BackColor = Color.FromArgb(200, 100, 100); // красноватый цвет
+            btnFindSkins.Click += FindSkinsSource_Click;
+            flowPanel.Controls.Add(btnFindSkins);
+
+
+
+            // Панель для нижних кнопок
             Panel bottomPanel = new Panel();
             bottomPanel.Dock = DockStyle.Bottom;
-            bottomPanel.Height = 160; // Увеличили высоту для третьей кнопки
+            bottomPanel.Height = 160;
             bottomPanel.BackColor = Color.Transparent;
 
-            // Кнопка "Применить" - ПЕРВАЯ (верхняя)
+            // Кнопка "Применить" - ФИОЛЕТОВАЯ
             Button btnApply = new Button();
             btnApply.Text = "✓ Применить";
             btnApply.Size = new Size(150, 45);
-            btnApply.Location = new Point(0, 5); // Было 10
+            btnApply.Location = new Point(0, 5);
+            btnApply.Font = new Font("Segoe UI", 10, FontStyle.Bold);
             btnApply.FlatStyle = FlatStyle.Flat;
-            btnApply.BackColor = Color.FromArgb(0, 120, 215);
+            btnApply.FlatAppearance.BorderSize = 0;
+            btnApply.BackColor = Color.FromArgb(154, 75, 255); // ФИОЛЕТОВЫЙ
             btnApply.ForeColor = Color.White;
+            btnApply.Cursor = Cursors.Hand;
+            MakeButtonRounded(btnApply, 15);
             btnApply.Click += (s, e) => ApplySettings();
             bottomPanel.Controls.Add(btnApply);
 
-            // Кнопка "Свернуть" - ВТОРАЯ (посередине)
+            // Кнопка "Свернуть" - БИРЮЗОВАЯ
             Button btnMinimize = new Button();
             btnMinimize.Text = "▼ Свернуть";
             btnMinimize.Size = new Size(150, 45);
-            btnMinimize.Location = new Point(0, 60); // Было 65
+            btnMinimize.Location = new Point(0, 60);
+            btnMinimize.Font = new Font("Segoe UI", 10, FontStyle.Bold);
             btnMinimize.FlatStyle = FlatStyle.Flat;
-            btnMinimize.BackColor = Color.FromArgb(64, 64, 64);
+            btnMinimize.FlatAppearance.BorderSize = 0;
+            btnMinimize.BackColor = Color.FromArgb(59, 200, 207); // БИРЮЗОВЫЙ
             btnMinimize.ForeColor = Color.White;
+            btnMinimize.Cursor = Cursors.Hand;
+            MakeButtonRounded(btnMinimize, 15);
             btnMinimize.Click += (s, e) => MinimizeToTray();
             bottomPanel.Controls.Add(btnMinimize);
 
-            // НОВАЯ кнопка "На главную" - ТРЕТЬЯ (самая нижняя)
+            // Кнопка "На главную" - ПАСТЕЛЬНО-РОЗОВАЯ
             Button btnHome = new Button();
             btnHome.Text = "🏠 На главную";
             btnHome.Size = new Size(150, 45);
-            btnHome.Location = new Point(0, 115); // Было 120
+            btnHome.Location = new Point(0, 115);
+            btnHome.Font = new Font("Segoe UI", 10, FontStyle.Bold);
             btnHome.FlatStyle = FlatStyle.Flat;
-            btnHome.BackColor = Color.FromArgb(100, 100, 100);
-            btnHome.ForeColor = Color.White;
+            btnHome.FlatAppearance.BorderSize = 0;
+            btnHome.BackColor = Color.FromArgb(254, 185, 182); // ПАСТЕЛЬНО-РОЗОВЫЙ
+            btnHome.ForeColor = Color.FromArgb(44, 62, 80); // ТЁМНО-СИНИЙ
+            btnHome.Cursor = Cursors.Hand;
+            MakeButtonRounded(btnHome, 15);
             btnHome.Click += (s, e) => GoToHome();
             bottomPanel.Controls.Add(btnHome);
 
@@ -310,54 +517,28 @@ namespace CursorCompanionFinish
             this.Controls.Add(navigationPanel);
             this.Controls.Add(lblStatus);
 
-            // Создаем меню
             InitializeMenu();
-
-            // Показываем галерею по умолчанию
             ShowGallery();
-        }
-
-        // Упрощенный метод создания кнопок
-        private Button CreateNavButton(string text)
-        {
-            Button btn = new Button();
-            btn.Text = text;
-            btn.FlatStyle = FlatStyle.Flat;
-            btn.ForeColor = Color.White;
-            btn.BackColor = Color.Transparent;
-            btn.Size = new Size(150, 45);
-            btn.Margin = new Padding(0, 0, 0, 10); // Отступ снизу
-            btn.TextAlign = ContentAlignment.MiddleLeft;
-            btn.Font = new Font("Segoe UI", 10);
-            btn.FlatAppearance.BorderSize = 0;
-            return btn;
         }
 
         private void GoToHome()
         {
-            // Восстанавливаем обои перед переходом на главную
             if (_wallpaperService != null)
             {
                 _wallpaperService.RestoreOriginalWallpaper();
             }
 
-            // Останавливаем питомца
             if (_currentPet != null)
             {
                 _currentPet.Stop();
                 _currentPet = null;
             }
 
-            // Закрываем текущее главное окно
             this.Close();
 
-            // Открываем окно входа
             SplashForm splashForm = new SplashForm();
             splashForm.Show();
         }
-
-        // Обновляем метод ExitApplication() чтобы не закрывать программу полностью
-
 
         private void CheckAllBackgrounds()
         {
@@ -382,7 +563,6 @@ namespace CursorCompanionFinish
                 result += "\n";
             }
 
-            // Проверяем папку Backgrounds
             string backgroundsPath = Path.Combine(_fixedBasePath, "Backgrounds");
             result += $"Папка Backgrounds: {backgroundsPath}\n";
             result += $"Существует: {(Directory.Exists(backgroundsPath) ? "✅" : "❌")}\n";
@@ -398,23 +578,6 @@ namespace CursorCompanionFinish
             }
 
             MessageBox.Show(result, "Проверка фонов", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        }
-
-        // Версия метода с позицией Y:
-        private Button CreateNavButton(string text, string tag, int y)
-        {
-            Button btn = new Button();
-            btn.Text = text;
-            btn.Tag = tag;
-            btn.FlatStyle = FlatStyle.Flat;
-            btn.ForeColor = Color.White;
-            btn.BackColor = Color.Transparent;
-            btn.Size = new Size(150, 45);
-            btn.Location = new Point(15, y); // Используем переданный Y
-            btn.TextAlign = ContentAlignment.MiddleLeft;
-            btn.Font = new Font("Segoe UI", 10);
-            btn.FlatAppearance.BorderSize = 0;
-            return btn;
         }
 
         private void ShowDebugInfo()
@@ -454,9 +617,54 @@ namespace CursorCompanionFinish
                 info += "preview.png существует: " + File.Exists(previewPath) + "\n";
                 var spriteFiles = Directory.GetFiles(skinPath, "sprite_*.png");
                 info += "Спрайтов найдено: " + spriteFiles.Length + "\n";
+                foreach (string file in spriteFiles)
+                {
+                    info += "  - " + Path.GetFileName(file) + "\n";
+                }
             }
 
             info += "\n6. Текущий скин: " + (_settings?.CurrentSkinId.ToString() ?? "не задан");
+
+            // ДОБАВЛЯЕМ ПОИСК ПО ВСЕМ ВОЗМОЖНЫМ ПУТЯМ
+            info += "\n\n=== ПОИСК ВСЕХ ПАПОК SKINS ===\n\n";
+
+            string[] possibleRoots = {
+        @"C:\Users\user\Desktop",
+        @"C:\Users\user\Documents",
+        @"C:\Users\user\Downloads",
+        @"C:\Program Files",
+        @"C:\Program Files (x86)",
+        @"D:\",
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+        Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+    };
+
+            foreach (string root in possibleRoots)
+            {
+                if (Directory.Exists(root))
+                {
+                    try
+                    {
+                        var skinFolders = Directory.GetDirectories(root, "skin_*", SearchOption.AllDirectories);
+                        if (skinFolders.Length > 0)
+                        {
+                            info += $"Найдены папки в {root}:\n";
+                            foreach (string folder in skinFolders.Take(3))
+                            {
+                                info += $"  {folder}\n";
+                                // Проверяем содержимое
+                                if (Directory.Exists(folder))
+                                {
+                                    var files = Directory.GetFiles(folder, "*.png");
+                                    info += $"    файлов PNG: {files.Length}\n";
+                                }
+                            }
+                            info += "\n";
+                        }
+                    }
+                    catch { }
+                }
+            }
 
             MessageBox.Show(info, "Отладочная информация", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -465,18 +673,15 @@ namespace CursorCompanionFinish
         {
             MenuStrip menuStrip = new MenuStrip();
 
-            // Меню Файл
             ToolStripMenuItem fileMenu = new ToolStripMenuItem("Файл");
             fileMenu.DropDownItems.Add("Свернуть в трей", null, (s, e) => MinimizeToTray());
             fileMenu.DropDownItems.Add(new ToolStripSeparator());
             fileMenu.DropDownItems.Add("Выход", null, (s, e) => ExitApplication());
 
-            // Меню Вид
             ToolStripMenuItem viewMenu = new ToolStripMenuItem("Вид");
             viewMenu.DropDownItems.Add("Галерея", null, (s, e) => ShowGallery());
             viewMenu.DropDownItems.Add("Настройки", null, (s, e) => ShowSettings());
 
-            // Меню Помощь
             ToolStripMenuItem helpMenu = new ToolStripMenuItem("Помощь");
             helpMenu.DropDownItems.Add("Справка", null, (s, e) => ShowHelp());
             helpMenu.DropDownItems.Add("О программе", null, (s, e) => ShowAbout());
@@ -493,59 +698,91 @@ namespace CursorCompanionFinish
         {
             contentPanel.Controls.Clear();
 
+            // ФИОЛЕТОВЫЙ ФОН
+            contentPanel.BackColor = Color.FromArgb(197, 149, 255);
+
+            // Градиент
+            contentPanel.Paint += (sender, e) =>
+            {
+                using (var brush = new LinearGradientBrush(
+                    contentPanel.ClientRectangle,
+                    Color.FromArgb(197, 149, 255),
+                    Color.FromArgb(217, 169, 255),
+                    LinearGradientMode.Vertical))
+                {
+                    e.Graphics.FillRectangle(brush, contentPanel.ClientRectangle);
+                }
+            };
+
             // Заголовок
             Label lblTitle = new Label();
             lblTitle.Text = "🎮 ВЫБЕРИТЕ ПИТОМЦА";
             lblTitle.Font = new Font("Segoe UI", 18, FontStyle.Bold);
-            lblTitle.ForeColor = Color.White;
+            lblTitle.ForeColor = Color.FromArgb(44, 62, 80);
             lblTitle.Location = new Point(30, 30);
             lblTitle.AutoSize = true;
+            lblTitle.BackColor = Color.Transparent;
             contentPanel.Controls.Add(lblTitle);
 
-            // Список скинов слева - УВЕЛИЧИЛИ
+            // Список скинов
             skinListBox = new ListBox();
             skinListBox.Size = new Size(250, 400);
             skinListBox.Location = new Point(30, 80);
-            skinListBox.BackColor = Color.FromArgb(45, 45, 48);
-            skinListBox.ForeColor = Color.White;
+            skinListBox.BackColor = Color.White;
+            skinListBox.ForeColor = Color.FromArgb(44, 62, 80);
             skinListBox.BorderStyle = BorderStyle.FixedSingle;
-            skinListBox.Font = new Font("Segoe UI", 11);
+            skinListBox.Font = new Font("Segoe UI", 11, FontStyle.Bold);
             skinListBox.SelectedIndexChanged += SkinListBox_SelectedIndexChanged;
             contentPanel.Controls.Add(skinListBox);
 
-            // Превью справа - УВЕЛИЧИЛИ И СМЕСТИЛИ
+            // ========== ПРЕВЬЮ С ЗАКРУГЛЁННЫМИ УГЛАМИ ==========
             skinPreview = new PictureBox();
             skinPreview.Size = new Size(400, 300);
-            skinPreview.Location = new Point(300, 80);
-            skinPreview.BorderStyle = BorderStyle.FixedSingle;
+            skinPreview.Location = new Point(293, 80);
+            skinPreview.BorderStyle = BorderStyle.None;
             skinPreview.SizeMode = PictureBoxSizeMode.Zoom;
-            skinPreview.BackColor = Color.FromArgb(20, 20, 20);
+            skinPreview.BackColor = Color.FromArgb(45, 45, 48); // ТЁМНО-СЕРЫЙ
+            skinPreview.Padding = new Padding(10);
+
+            // --- ЗАКРУГЛЯЕМ (радиус 10) ---
+            MakePictureBoxRounded(skinPreview, 10);
+
             contentPanel.Controls.Add(skinPreview);
 
-            // Описание - УВЕЛИЧИЛИ И СМЕСТИЛИ
+            // Описание
             skinDescription = new Label();
-            skinDescription.Location = new Point(300, 390);
+            skinDescription.Location = new Point(293, 390);
             skinDescription.Size = new Size(400, 80);
-            skinDescription.ForeColor = Color.White;
-            skinDescription.Font = new Font("Segoe UI", 10);
+            skinDescription.ForeColor = Color.FromArgb(44, 62, 80);
+            skinDescription.Font = new Font("Segoe UI", 10, FontStyle.Bold);
             skinDescription.Text = "Выберите скин для просмотра";
+            skinDescription.BackColor = Color.Transparent;
             contentPanel.Controls.Add(skinDescription);
 
-            // Кнопка активации - СМЕСТИЛИ
+            // Кнопка активации
             btnActivate = new Button();
             btnActivate.Text = "🎮 АКТИВИРОВАТЬ";
             btnActivate.Size = new Size(180, 50);
-            btnActivate.Location = new Point(300, 480);
-            btnActivate.BackColor = Color.FromArgb(0, 150, 100);
-            btnActivate.ForeColor = Color.White;
+            btnActivate.Location = new Point(293, 480);
             btnActivate.Font = new Font("Segoe UI", 11, FontStyle.Bold);
+            btnActivate.BackColor = Color.FromArgb(154, 75, 255);
+            btnActivate.ForeColor = Color.White;
             btnActivate.FlatStyle = FlatStyle.Flat;
+            btnActivate.FlatAppearance.BorderSize = 0;
+            btnActivate.Cursor = Cursors.Hand;
+            MakeButtonRounded(btnActivate, 18);
             btnActivate.Click += BtnActivate_Click;
             contentPanel.Controls.Add(btnActivate);
 
-            // Загружаем скины в список
+            // Убираем обработчик Paint
+            contentPanel.Paint -= contentPanel_Paint;
+
             LoadSkinsToListBox();
         }
+
+
+        // Заглушка для удаления обработчика
+        private void contentPanel_Paint(object sender, PaintEventArgs e) { }
 
         private void LoadSkins()
         {
@@ -553,17 +790,14 @@ namespace CursorCompanionFinish
             {
                 Debug.WriteLine("Начинаем загрузку скинов...");
 
-                // ВАЖНО: Всегда создаем новый список
                 _skins = new List<Models.PetSkin>();
 
-                // Создаем 7 скинов
                 for (int i = 1; i <= 7; i++)
                 {
                     Models.PetSkin skin = new Models.PetSkin();
                     skin.Id = i;
                     skin.IsUnlocked = true;
 
-                    // Устанавливаем имя в зависимости от ID
                     switch (i)
                     {
                         case 1: skin.Name = "Ящерица"; break;
@@ -578,7 +812,7 @@ namespace CursorCompanionFinish
 
                     skin.Description = GetSkinDescription(i);
                     skin.ThemeColor = GetThemeColor(i);
-                    skin.BasePosition = new Point(1000, 550); // Фиксированное место отдыха
+                    skin.BasePosition = new Point(1000, 550);
 
                     _skins.Add(skin);
                     Debug.WriteLine($"Добавлен скин: {skin.Name} (ID: {skin.Id})");
@@ -589,7 +823,7 @@ namespace CursorCompanionFinish
             catch (Exception ex)
             {
                 Debug.WriteLine($"ОШИБКА в LoadSkins: {ex.Message}");
-                _skins = new List<Models.PetSkin>(); // Всегда оставляем пустой список вместо null
+                _skins = new List<Models.PetSkin>();
             }
         }
 
@@ -597,14 +831,14 @@ namespace CursorCompanionFinish
         {
             switch (skinId)
             {
-                case 1: return "Зеленая ящерица с цепким хвостом. Любит греться на камнях.";
+                case 1: return "Ящерица с цепким хвостом. Любит греться на камнях.";
                 case 2: return "Шустрая крыска с длинным хвостом. Любит исследовать новые места.";
-                case 3: return "Гладкая змейка. Плавно скользит за курсором.";
-                case 4: return "Водный дракон. Всегда улыбается и любит воду.";
-                case 5: return "Ленивый котик. Часто засыпает на своем камне.";
+                case 3: return "Голубая змейка. Действительно редкий внешний вид!";
+                case 4: return "Розовый аксолотль. Жить не может без воды!";
+                case 5: return "Ленивый котик. Часто засыпает в своем домике, мягко мурча.";
                 case 6: return "Веселый хорёк. Любит играть и бегать по экрану.";
-                case 7: return "Маленький дракончик. Иногда выпускает дымок.";
-                default: return "Интерактивный питомец для вашего курсора.";
+                case 7: return "Золотой дракон. Иногда вы можете увидеть его на ночном небе.";
+                default: return "Интерактивный питомец для вашего курсора!";
             }
         }
 
@@ -612,27 +846,25 @@ namespace CursorCompanionFinish
         {
             switch (skinId)
             {
-                case 1: return Color.FromArgb(76, 175, 80);     // Ящерица - зеленый
-                case 2: return Color.FromArgb(121, 85, 72);     // Крыса - коричневый
-                case 3: return Color.FromArgb(139, 195, 74);    // Змея - салатовый
-                case 4: return Color.FromArgb(33, 150, 243);    // Аксолотль - синий
-                case 5: return Color.FromArgb(158, 158, 158);   // Кот - серый
-                case 6: return Color.FromArgb(255, 152, 0);     // Хорек - оранжевый
-                case 7: return Color.FromArgb(233, 30, 99);     // Дракон - розовый
+                case 1: return Color.FromArgb(76, 175, 80);
+                case 2: return Color.FromArgb(121, 85, 72);
+                case 3: return Color.FromArgb(139, 195, 74);
+                case 4: return Color.FromArgb(33, 150, 243);
+                case 5: return Color.FromArgb(158, 158, 158);
+                case 6: return Color.FromArgb(255, 152, 0);
+                case 7: return Color.FromArgb(233, 30, 99);
                 default: return Color.Purple;
             }
         }
 
         private void LoadSkinsToListBox()
         {
-            // Проверяем, существует ли ListBox
             if (skinListBox == null)
             {
                 Debug.WriteLine("Ошибка: skinListBox не инициализирован");
                 return;
             }
 
-            // Проверяем, инициализирован ли список скинов
             if (_skins == null)
             {
                 Debug.WriteLine("_skins равен null, вызываем LoadSkins()");
@@ -643,7 +875,6 @@ namespace CursorCompanionFinish
             {
                 skinListBox.Items.Clear();
 
-                // Проверяем, есть ли скины для отображения
                 if (_skins == null || _skins.Count == 0)
                 {
                     Debug.WriteLine("Список скинов пуст!");
@@ -676,10 +907,9 @@ namespace CursorCompanionFinish
 
             var skin = _skins[skinListBox.SelectedIndex];
 
-            // Обновляем превью
             if (skinPreview != null)
             {
-                skinPreview.BackColor = Color.FromArgb(20, 20, 20);
+                
             }
 
             if (skinDescription != null)
@@ -687,7 +917,6 @@ namespace CursorCompanionFinish
                 skinDescription.Text = skin.Description + "\n\nЦвет темы: " + skin.ThemeColor.Name;
             }
 
-            // Пытаемся загрузить изображение скина
             string relativePath = Path.Combine("Skins", "skin_" + skin.Id.ToString(), "preview.png");
             string imagePath = GetCorrectPath(relativePath);
 
@@ -698,7 +927,6 @@ namespace CursorCompanionFinish
             {
                 try
                 {
-                    // Освобождаем старую картинку
                     if (skinPreview != null && skinPreview.Image != null)
                     {
                         skinPreview.Image.Dispose();
@@ -728,32 +956,28 @@ namespace CursorCompanionFinish
 
         private void CreatePreviewImage(Models.PetSkin skin)
         {
-            // Создаем тестовое изображение
             Bitmap bmp = new Bitmap(400, 300);
             using (Graphics g = Graphics.FromImage(bmp))
             {
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
 
-                // Градиентный фон
                 using (LinearGradientBrush brush = new LinearGradientBrush(
                     new Point(0, 0),
                     new Point(400, 300),
-                    Color.FromArgb(30, 30, 40),
+                    Color.White,
                     skin.ThemeColor))
                 {
                     g.FillRectangle(brush, 0, 0, 400, 300);
                 }
 
-                // Название скина
-                using (Font font = new Font("Arial", 24, FontStyle.Bold))
-                using (SolidBrush textBrush = new SolidBrush(Color.White))
+                using (Font font = new Font("Segoe UI", 24, FontStyle.Bold))
+                using (SolidBrush textBrush = new SolidBrush(Color.FromArgb(44, 62, 80)))
                 {
                     g.DrawString(skin.Name, font, textBrush, 50, 100);
                 }
 
-                // Сообщение
-                using (Font font = new Font("Arial", 12))
-                using (SolidBrush textBrush = new SolidBrush(Color.LightGray))
+                using (Font font = new Font("Segoe UI", 12))
+                using (SolidBrush textBrush = new SolidBrush(Color.FromArgb(44, 62, 80)))
                 {
                     g.DrawString("Тестовое превью", font, textBrush, 120, 160);
                     g.DrawString("ID: " + skin.Id, font, textBrush, 120, 180);
@@ -805,7 +1029,6 @@ namespace CursorCompanionFinish
                             if (bool.TryParse(value, out bool minimize))
                                 _settings.MinimizeToTray = minimize;
                         }
-                        // ДОБАВЛЯЕМ ЗАГРУЗКУ НАСТРОЕК ЗОНЫ
                         else if (line.StartsWith("RestZoneX="))
                         {
                             string value = line.Substring("RestZoneX=".Length);
@@ -881,7 +1104,7 @@ namespace CursorCompanionFinish
                 Debug.WriteLine("Ошибка сохранения настроек: " + ex.Message);
             }
         }
-        
+
         private void SetupTrayIcon()
         {
             _trayIcon = new NotifyIcon();
@@ -910,9 +1133,11 @@ namespace CursorCompanionFinish
             };
         }
 
+      
+
+
         private void BtnActivate_Click(object sender, EventArgs e)
         {
-            // ДОБАВЛЕНО: Проверка на null
             if (_skins == null || skinListBox == null || skinListBox.SelectedIndex < 0 || skinListBox.SelectedIndex >= _skins.Count)
             {
                 MessageBox.Show("Пожалуйста, выберите скин!", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -929,7 +1154,6 @@ namespace CursorCompanionFinish
                 Debug.WriteLine($"=== АКТИВАЦИЯ СКИНА {skin.Id} ({skin.Name}) ===");
                 UpdateStatus($"Активация скина: {skin.Name}");
 
-                // Останавливаем текущего питомца
                 if (_currentPet != null)
                 {
                     _currentPet.Stop();
@@ -937,7 +1161,12 @@ namespace CursorCompanionFinish
                     UpdateStatus("Текущий питомец остановлен");
                 }
 
-                // Получаем путь к фону
+                // === ДОБАВЛЯЕМ СОХРАНЕНИЕ ПУТИ К ПОЛЬЗОВАТЕЛЬСКИМ ОБОЯМ ===
+                if (_wallpaperService != null)
+                {
+                    _wallpaperService.SaveCurrentUserWallpaper();
+                }
+
                 string bgPath = GetBackgroundPath(skin.Id);
 
                 Debug.WriteLine($"Путь к фону: {bgPath}");
@@ -957,7 +1186,6 @@ namespace CursorCompanionFinish
                     UpdateStatus("Фон не найден, создаем тестовый");
                 }
 
-                // Меняем обои
                 Debug.WriteLine("Вызываем ChangeWallpaper...");
                 bool wallpaperChanged = _wallpaperService.ChangeWallpaper(bgPath);
 
@@ -965,26 +1193,20 @@ namespace CursorCompanionFinish
                 {
                     Debug.WriteLine($"✓ Обои успешно изменены на: {Path.GetFileName(bgPath)}");
                     UpdateStatus($"Обои изменены: {Path.GetFileName(bgPath)}");
-
-                    // Проверяем, действительно ли поменялись обои
                     CheckIfWallpaperChanged(bgPath);
                 }
                 else
                 {
                     Debug.WriteLine($"✗ Не удалось изменить обои");
                     UpdateStatus("Не удалось изменить обои");
-
-                    // Пробуем альтернативный способ
                     TryAlternativeWallpaperChange(bgPath);
                 }
 
-                // Создаем нового питомца С НАСТРОЙКАМИ
                 try
                 {
                     Debug.WriteLine($"Создаем PetAI с настройками: ExploreWaitTime={_settings.ExploreWaitTime}, FreeRoamEnabled={_settings.FreeRoamEnabled}");
                     _currentPet = new PetAI(skin.Id, _settings);
                     _currentPet.Start();
-                    // ... остальной код
                 }
                 catch (Exception ex)
                 {
@@ -995,14 +1217,11 @@ namespace CursorCompanionFinish
                     return;
                 }
 
-                // Логируем активацию
                 _logService.LogActivity(skin.Id, $"Скин '{skin.Name}' активирован");
 
-                // Обновляем текущий скин в настройках
                 _settings.CurrentSkinId = skin.Id;
                 SaveSettings();
 
-                // Скрываем окно
                 if (_settings.MinimizeToTray)
                 {
                     this.Hide();
@@ -1019,25 +1238,21 @@ namespace CursorCompanionFinish
                 Debug.WriteLine($"=== АКТИВАЦИЯ ЗАВЕРШЕНА ===");
             }
         }
+
         public void ApplyRestZoneSettings(int x, int y, int width, int height)
         {
-            // Обновляем настройки
             _settings.RestZoneX = x;
             _settings.RestZoneY = y;
             _settings.RestZoneWidth = width;
             _settings.RestZoneHeight = height;
 
-            // Сохраняем в файл
             SaveSettings();
 
-            // Если есть активный питомец - перезапускаем его с новыми настройками
             if (_currentPet != null && _settings.CurrentSkinId > 0)
             {
-                // Останавливаем текущего
                 _currentPet.Stop();
                 _currentPet = null;
 
-                // Запускаем нового с обновленными настройками
                 try
                 {
                     _currentPet = new PetAI(_settings.CurrentSkinId, _settings);
@@ -1051,13 +1266,13 @@ namespace CursorCompanionFinish
                 }
             }
         }
+
         private void CheckIfWallpaperChanged(string expectedPath)
         {
             try
             {
                 Debug.WriteLine("=== ПРОВЕРКА ИЗМЕНЕНИЯ ОБОЕВ ===");
 
-                // Читаем текущие обои из реестра
                 using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop"))
                 {
                     if (key != null)
@@ -1093,12 +1308,10 @@ namespace CursorCompanionFinish
 
             try
             {
-                // Способ 1: Через Process.Start
                 Debug.WriteLine("Способ 1: Через Process.Start...");
                 System.Diagnostics.Process.Start("rundll32.exe", $"user32.dll,UpdatePerUserSystemParameters 1, {imagePath}");
                 Debug.WriteLine("Команда выполнена");
 
-                // Способ 2: Через PowerShell
                 Debug.WriteLine("Способ 2: Через PowerShell...");
                 string powerShellCommand = $"powershell -command \"Set-ItemProperty -Path 'HKCU:\\Control Panel\\Desktop' -Name Wallpaper -Value '{imagePath}'; rundll32.exe user32.dll, UpdatePerUserSystemParameters 1, True\"";
                 System.Diagnostics.Process.Start("cmd.exe", $"/c {powerShellCommand}");
@@ -1116,48 +1329,32 @@ namespace CursorCompanionFinish
         {
             Debug.WriteLine($"=== ПОИСК ФОНА ДЛЯ СКИНА {skinId} ===");
 
-            // Массив имен фонов в правильном порядке (по вашей нумерации)
             string[] bgNames = {
-        "lizard",     // skin_1 - ящерица
-        "rat",        // skin_2 - крыса
-        "snake",      // skin_3 - змея
-        "axolotl",    // skin_4 - аксолотль
-        "cat",        // skin_5 - кот
-        "ferret",     // skin_6 - хорек
-        "dragon"      // skin_7 - дракон
-    };
+                "lizard", "rat", "snake", "axolotl", "cat", "ferret", "dragon"
+            };
 
             if (skinId > 0 && skinId <= bgNames.Length)
             {
                 string bgFileName = bgNames[skinId - 1] + "_bg.png";
                 Debug.WriteLine($"Имя файла фона: {bgFileName}");
 
-                // Пробуем ВСЕ возможные пути по порядку
                 string[] possiblePaths = {
-            // 1. Фиксированный путь
-            Path.Combine(_fixedBasePath, "Backgrounds", bgFileName),
-            
-            // 2. Относительные пути
-            Path.Combine("Backgrounds", bgFileName),
-            Path.Combine(Directory.GetCurrentDirectory(), "Backgrounds", bgFileName),
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Backgrounds", bgFileName),
-            Path.Combine(Application.StartupPath, "Backgrounds", bgFileName),
-            
-            // 3. Абсолютные пути
-            @"C:\Users\user\Desktop\Cursor Companion\CursorCompanionFinish\CursorCompanionFinish\bin\Debug\Backgrounds\" + bgFileName,
-            @"C:\Users\user\Desktop\Cursor Companion\CursorCompanionFinish\CursorCompanionFinish\Backgrounds\" + bgFileName
-        };
+                    Path.Combine(_fixedBasePath, "Backgrounds", bgFileName),
+                    Path.Combine("Backgrounds", bgFileName),
+                    Path.Combine(Directory.GetCurrentDirectory(), "Backgrounds", bgFileName),
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Backgrounds", bgFileName),
+                    Path.Combine(Application.StartupPath, "Backgrounds", bgFileName),
+                    @"C:\Users\user\Desktop\Cursor Companion\CursorCompanionFinish\CursorCompanionFinish\bin\Debug\Backgrounds\" + bgFileName,
+                    @"C:\Users\user\Desktop\Cursor Companion\CursorCompanionFinish\CursorCompanionFinish\Backgrounds\" + bgFileName
+                };
 
-                // Показываем все пути для отладки
                 for (int i = 0; i < possiblePaths.Length; i++)
                 {
                     bool exists = File.Exists(possiblePaths[i]);
                     Debug.WriteLine($"Путь {i + 1}: {possiblePaths[i]}");
                     Debug.WriteLine($"  Существует: {exists}");
-                    Debug.WriteLine($"  Полный путь: {Path.GetFullPath(possiblePaths[i])}");
                 }
 
-                // Ищем первый существующий файл
                 foreach (string path in possiblePaths)
                 {
                     if (File.Exists(path))
@@ -1170,7 +1367,6 @@ namespace CursorCompanionFinish
 
                 Debug.WriteLine($"✗ Фон {bgFileName} не найден ни по одному пути!");
 
-                // Если фон не найден - создаем тестовый
                 string testPath = Path.Combine(_fixedBasePath, "Backgrounds", bgFileName);
                 CreateTestBackgroundForSkin(skinId, testPath);
                 return testPath;
@@ -1186,7 +1382,6 @@ namespace CursorCompanionFinish
             {
                 Debug.WriteLine($"Создаю тестовый фон для скина {skinId} по пути: {outputPath}");
 
-                // Убедимся, что папка существует
                 string directory = Path.GetDirectoryName(outputPath);
                 if (!Directory.Exists(directory))
                 {
@@ -1197,7 +1392,6 @@ namespace CursorCompanionFinish
                 string skinName = "Неизвестный скин";
                 Color themeColor = Color.Purple;
 
-                // Определяем имя и цвет по skinId
                 switch (skinId)
                 {
                     case 1: skinName = "Ящерица"; themeColor = Color.FromArgb(76, 175, 80); break;
@@ -1219,14 +1413,12 @@ namespace CursorCompanionFinish
                 {
                     graphics.FillRectangle(brush, 0, 0, 1920, 1080);
 
-                    // Заголовок
                     using (Font titleFont = new Font("Arial", 72, FontStyle.Bold))
                     using (SolidBrush titleBrush = new SolidBrush(Color.White))
                     {
                         graphics.DrawString(skinName, titleFont, titleBrush, 100, 100);
                     }
 
-                    // Информация
                     using (Font infoFont = new Font("Arial", 36))
                     using (SolidBrush infoBrush = new SolidBrush(Color.FromArgb(220, 255, 255, 255)))
                     {
@@ -1236,7 +1428,6 @@ namespace CursorCompanionFinish
                         graphics.DrawString(DateTime.Now.ToString("dd.MM.yyyy HH:mm"), infoFont, infoBrush, 100, 400);
                     }
 
-                    // Сохраняем
                     bitmap.Save(outputPath, System.Drawing.Imaging.ImageFormat.Png);
                     Debug.WriteLine($"✓ Создан тестовый фон: {outputPath}");
                     Debug.WriteLine($"  Размер: {bitmap.Width}x{bitmap.Height}");
@@ -1245,55 +1436,6 @@ namespace CursorCompanionFinish
             catch (Exception ex)
             {
                 Debug.WriteLine($"✗ Ошибка создания тестового фона: {ex.Message}");
-            }
-        }
-
-        private void CreateTestBackground(Models.PetSkin skin)
-        {
-            string bgPath = GetBackgroundPath(skin.Id);
-            string bgDir = Path.GetDirectoryName(bgPath);
-
-            try
-            {
-                if (!Directory.Exists(bgDir))
-                {
-                    Directory.CreateDirectory(bgDir);
-                }
-
-                using (Bitmap bitmap = new Bitmap(1920, 1080))
-                using (Graphics graphics = Graphics.FromImage(bitmap))
-                using (LinearGradientBrush brush = new LinearGradientBrush(
-                    new Point(0, 0),
-                    new Point(1920, 1080),
-                    Color.FromArgb(30, 30, 40),
-                    skin.ThemeColor))
-                {
-                    graphics.FillRectangle(brush, 0, 0, 1920, 1080);
-
-                    // Название скина
-                    using (Font font = new Font("Arial", 48, FontStyle.Bold))
-                    using (SolidBrush textBrush = new SolidBrush(Color.White))
-                    {
-                        graphics.DrawString(skin.Name, font, textBrush, 100, 100);
-                    }
-
-                    // Инструкция
-                    using (Font font = new Font("Arial", 24))
-                    using (SolidBrush textBrush = new SolidBrush(Color.FromArgb(200, 255, 255, 255)))
-                    {
-                        graphics.DrawString("Cursor Companion", font, textBrush, 100, 200);
-                        graphics.DrawString("Двойной клик по месту отдыха → сон", font, textBrush, 100, 250);
-                        graphics.DrawString("Правый нижний угол экрана", font, textBrush, 100, 300);
-                    }
-
-                    // Сохраняем как PNG
-                    bitmap.Save(bgPath, System.Drawing.Imaging.ImageFormat.Png);
-                    Debug.WriteLine("Создан тестовый фон: " + bgPath);
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine("Ошибка создания фона: " + ex.Message);
             }
         }
 
@@ -1344,7 +1486,6 @@ namespace CursorCompanionFinish
                 SaveSettings();
                 UpdateStatus("Настройки сохранены");
 
-                // Обновляем настройки текущего питомца
                 if (_currentPet != null)
                 {
                     _currentPet.SetIdleTimeout(_settings.IdleTimeout);
@@ -1356,13 +1497,15 @@ namespace CursorCompanionFinish
         private void ShowStatistics()
         {
             contentPanel.Controls.Clear();
+            contentPanel.BackColor = Color.FromArgb(197, 149, 255); // ФИОЛЕТОВЫЙ
 
             Label lblTitle = new Label();
             lblTitle.Text = "📊 СТАТИСТИКА";
             lblTitle.Font = new Font("Segoe UI", 18, FontStyle.Bold);
-            lblTitle.ForeColor = Color.White;
+            lblTitle.ForeColor = Color.FromArgb(44, 62, 80); // ТЁМНО-СИНИЙ
             lblTitle.Location = new Point(30, 30);
             lblTitle.AutoSize = true;
+            lblTitle.BackColor = Color.Transparent;
             contentPanel.Controls.Add(lblTitle);
 
             TextBox statsText = new TextBox();
@@ -1370,27 +1513,66 @@ namespace CursorCompanionFinish
             statsText.ReadOnly = true;
             statsText.Size = new Size(500, 300);
             statsText.Location = new Point(30, 80);
-            statsText.BackColor = Color.FromArgb(45, 45, 48);
-            statsText.ForeColor = Color.White;
+            statsText.BackColor = Color.White;
+            statsText.ForeColor = Color.FromArgb(44, 62, 80);
             statsText.Font = new Font("Consolas", 10);
             statsText.ScrollBars = ScrollBars.Vertical;
 
-            // Загружаем статистику для текущего скина
             statsText.Text = _logService.GetStatistics(_settings.CurrentSkinId);
             contentPanel.Controls.Add(statsText);
 
             Button btnBack = new Button();
             btnBack.Text = "← Назад в галерею";
-            btnBack.Size = new Size(150, 40);
+            btnBack.Size = new Size(200, 40);
             btnBack.Location = new Point(30, 400);
+            btnBack.Font = new Font("Segoe UI", 12, FontStyle.Bold);
             btnBack.FlatStyle = FlatStyle.Flat;
+            btnBack.FlatAppearance.BorderSize = 0;
             btnBack.ForeColor = Color.White;
-            btnBack.BackColor = Color.FromArgb(64, 64, 64);
+            btnBack.BackColor = Color.FromArgb(154, 75, 255); // ФИОЛЕТОВЫЙ
+            btnBack.Cursor = Cursors.Hand;
+            MakeButtonRounded(btnBack, 15);
             btnBack.Click += (s, e) => ShowGallery();
             contentPanel.Controls.Add(btnBack);
 
             UpdateStatus("Открыта статистика");
         }
+
+       
+
+        /// <summary>
+        /// Делает PictureBox со скруглёнными углами
+        /// </summary>
+        /// <param name="pictureBox">PictureBox</param>
+        /// <param name="radius">Радиус скругления в пикселях</param>
+        private void MakePictureBoxRounded(PictureBox pictureBox, int radius)
+{
+    // Создаём путь со скруглёнными углами
+    var path = new GraphicsPath();
+    path.AddArc(0, 0, radius, radius, 180, 90);
+    path.AddArc(pictureBox.Width - radius, 0, radius, radius, 270, 90);
+    path.AddArc(pictureBox.Width - radius, pictureBox.Height - radius, radius, radius, 0, 90);
+    path.AddArc(0, pictureBox.Height - radius, radius, radius, 90, 90);
+    path.CloseFigure();
+    
+    // Применяем регион
+    pictureBox.Region = new Region(path);
+    
+    // Подписываемся на изменение размера
+    pictureBox.SizeChanged += (s, e) =>
+    {
+        var pb = s as PictureBox;
+        if (pb == null) return;
+        
+        var newPath = new GraphicsPath();
+        newPath.AddArc(0, 0, radius, radius, 180, 90);
+        newPath.AddArc(pb.Width - radius, 0, radius, radius, 270, 90);
+        newPath.AddArc(pb.Width - radius, pb.Height - radius, radius, radius, 0, 90);
+        newPath.AddArc(0, pb.Height - radius, radius, radius, 90, 90);
+        newPath.CloseFigure();
+        pb.Region = new Region(newPath);
+    };
+}
 
         private void ShowHelp()
         {
@@ -1423,36 +1605,30 @@ namespace CursorCompanionFinish
 
         private void ExitApplication()
         {
-            // Восстанавливаем оригинальные обои
             if (_wallpaperService != null)
             {
                 _wallpaperService.RestoreOriginalWallpaper();
             }
             else
             {
-                // Если сервис не инициализирован, создаем новый
                 Services.WallpaperService tempService = new Services.WallpaperService();
                 tempService.RestoreOriginalWallpaper();
             }
 
-            // Останавливаем питомца
             if (_currentPet != null)
             {
                 _currentPet.Stop();
                 _currentPet = null;
             }
 
-            // Скрываем иконку в трее
             if (_trayIcon != null)
             {
                 _trayIcon.Visible = false;
                 _trayIcon.Dispose();
             }
 
-            // Закрываем главное окно (программа продолжится, так как есть окно входа)
             this.Close();
 
-            // Если это последнее окно - выходим из приложения
             if (Application.OpenForms.Count == 0)
             {
                 Application.Exit();
@@ -1477,8 +1653,6 @@ namespace CursorCompanionFinish
             }
             else
             {
-                // Если окно закрывается по другой причине (например, при выходе)
-                // Восстанавливаем обои
                 if (_wallpaperService != null)
                 {
                     _wallpaperService.RestoreOriginalWallpaper();
@@ -1499,7 +1673,6 @@ namespace CursorCompanionFinish
                 {
                     _currentPet.Dispose();
                 }
-                // Гарантируем восстановление обоев
                 if (_wallpaperService != null)
                 {
                     _wallpaperService.RestoreOriginalWallpaper();
