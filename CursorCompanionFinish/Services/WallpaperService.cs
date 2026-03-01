@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 
@@ -6,124 +7,258 @@ namespace CursorCompanionFinish.Services
 {
     public class WallpaperService
     {
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
-        private static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+        // Поле для хранения пути к оригинальным обоям пользователя
+        private string _userWallpaperPath;
 
-        private const int SPI_SETDESKWALLPAPER = 0x0014;
-        private const int SPIF_UPDATEINIFILE = 0x01;
-        private const int SPIF_SENDWININICHANGE = 0x02;
+        // WinAPI функции
+        private static class NativeMethods
+        {
+            public const uint SPI_SETDESKWALLPAPER = 0x0014;
+            public const uint SPIF_UPDATEINIFILE = 0x01;
+            public const uint SPIF_SENDCHANGE = 0x02;
 
-        private string _originalWallpaperPath;
-        private bool _isWallpaperChanged = false;
+            [DllImport("user32.dll", CharSet = CharSet.Auto)]
+            public static extern bool SystemParametersInfo(
+                uint uiAction,
+                uint uiParam,
+                string pvParam,
+                uint fWinIni
+            );
+        }
 
         public WallpaperService()
         {
-            // Сохраняем оригинальные обои при создании
-            SaveOriginalWallpaperPath();
+            Debug.WriteLine("WallpaperService инициализирован");
+            _userWallpaperPath = null;
         }
 
-        private void SaveOriginalWallpaperPath()
+        /// <summary>
+        /// Сохраняет путь к текущим обоям пользователя (вызывать перед первым изменением)
+        /// </summary>
+        public void SaveCurrentUserWallpaper()
         {
-            // Читаем текущие обои из реестра
-            using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop"))
+            try
             {
-                if (key != null)
-                {
-                    _originalWallpaperPath = key.GetValue("Wallpaper") as string;
-                    System.Diagnostics.Debug.WriteLine($"Оригинальные обои сохранены: {_originalWallpaperPath}");
-                }
+                _userWallpaperPath = GetCurrentWallpaperPathFromRegistry();
+                Debug.WriteLine($"Сохранён путь к пользовательским обоям: {_userWallpaperPath}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Ошибка сохранения пути к обоям: {ex.Message}");
             }
         }
 
+        /// <summary>
+        /// Меняет обои рабочего стола на указанное изображение
+        /// </summary>
+        /// <param name="imagePath">Путь к файлу изображения</param>
+        /// <returns>True если успешно, False если ошибка</returns>
         public bool ChangeWallpaper(string imagePath)
         {
             try
             {
-                if (!File.Exists(imagePath))
+                Debug.WriteLine($"=== СМЕНА ОБОЕВ ===");
+                Debug.WriteLine($"Путь к изображению: {imagePath}");
+
+                if (string.IsNullOrEmpty(imagePath))
                 {
-                    System.Diagnostics.Debug.WriteLine($"Файл обоев не существует: {imagePath}");
+                    Debug.WriteLine("Ошибка: путь к изображению пуст");
                     return false;
                 }
 
-                // Меняем обои
-                int result = SystemParametersInfo(
-                    SPI_SETDESKWALLPAPER,
-                    0,
-                    imagePath,
-                    SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE
-                );
-
-                if (result != 0)
+                if (!File.Exists(imagePath))
                 {
-                    _isWallpaperChanged = true;
-                    System.Diagnostics.Debug.WriteLine($"Обои успешно изменены на: {Path.GetFileName(imagePath)}");
-                    return true;
+                    Debug.WriteLine($"Ошибка: файл не существует по пути {imagePath}");
+                    return false;
                 }
 
-                return false;
+                // Проверяем размер файла
+                FileInfo fileInfo = new FileInfo(imagePath);
+                Debug.WriteLine($"Размер файла: {fileInfo.Length} байт");
+
+                // Устанавливаем обои через WinAPI
+                bool result = NativeMethods.SystemParametersInfo(
+                    NativeMethods.SPI_SETDESKWALLPAPER,
+                    0,
+                    imagePath,
+                    NativeMethods.SPIF_UPDATEINIFILE | NativeMethods.SPIF_SENDCHANGE
+                );
+
+                Debug.WriteLine($"Результат смены обоев: {result}");
+
+                if (result)
+                {
+                    Debug.WriteLine($"✓ Обои успешно изменены на: {Path.GetFileName(imagePath)}");
+                }
+                else
+                {
+                    Debug.WriteLine("✗ Не удалось изменить обои через WinAPI");
+                }
+
+                return result;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Ошибка смены обоев: {ex.Message}");
+                Debug.WriteLine($"✗ Ошибка при смене обоев: {ex.Message}");
                 return false;
             }
         }
 
+        /// <summary>
+        /// Восстанавливает оригинальные обои пользователя
+        /// </summary>
         public void RestoreOriginalWallpaper()
         {
-            if (!_isWallpaperChanged || string.IsNullOrEmpty(_originalWallpaperPath))
-            {
-                System.Diagnostics.Debug.WriteLine("Не нужно восстанавливать обои (не меняли или нет сохраненного пути)");
-                return;
-            }
-
             try
             {
-                // Проверяем, существует ли файл оригинальных обоев
-                bool useOriginal = File.Exists(_originalWallpaperPath);
+                Debug.WriteLine("=== ВОССТАНОВЛЕНИЕ ОБОЕВ ПОЛЬЗОВАТЕЛЯ ===");
 
-                if (!useOriginal)
+                string wallpaperToRestore = null;
+
+                // Сначала пробуем сохранённый путь (если есть)
+                if (!string.IsNullOrEmpty(_userWallpaperPath))
                 {
-                    // Если оригинальный файл не найден, пробуем стандартный путь Windows
-                    string windowsPath = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-                    string defaultWallpaper = Path.Combine(windowsPath, "Web", "Wallpaper", "Windows", "img0.jpg");
+                    Debug.WriteLine($"Проверяем сохранённый путь: {_userWallpaperPath}");
 
-                    if (File.Exists(defaultWallpaper))
+                    if (File.Exists(_userWallpaperPath))
                     {
-                        _originalWallpaperPath = defaultWallpaper;
-                        useOriginal = true;
-                    }
-                }
-
-                if (useOriginal)
-                {
-                    // Восстанавливаем оригинальные обои
-                    int result = SystemParametersInfo(
-                        SPI_SETDESKWALLPAPER,
-                        0,
-                        _originalWallpaperPath,
-                        SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE
-                    );
-
-                    if (result != 0)
-                    {
-                        _isWallpaperChanged = false;
-                        System.Diagnostics.Debug.WriteLine($"Обои восстановлены на: {Path.GetFileName(_originalWallpaperPath)}");
+                        wallpaperToRestore = _userWallpaperPath;
+                        Debug.WriteLine("Используем сохранённый путь к обоям");
                     }
                     else
                     {
-                        System.Diagnostics.Debug.WriteLine("Не удалось восстановить обои");
+                        Debug.WriteLine("Сохранённый файл не существует");
+                    }
+                }
+
+                // Если нет сохранённого пути или файл не существует - читаем из реестра
+                if (string.IsNullOrEmpty(wallpaperToRestore))
+                {
+                    string registryPath = GetCurrentWallpaperPathFromRegistry();
+                    Debug.WriteLine($"Проверяем путь из реестра: {registryPath}");
+
+                    if (!string.IsNullOrEmpty(registryPath) && File.Exists(registryPath))
+                    {
+                        wallpaperToRestore = registryPath;
+                        Debug.WriteLine("Используем путь из реестра");
+                    }
+                }
+
+                // Восстанавливаем обои
+                if (!string.IsNullOrEmpty(wallpaperToRestore))
+                {
+                    bool result = NativeMethods.SystemParametersInfo(
+                        NativeMethods.SPI_SETDESKWALLPAPER,
+                        0,
+                        wallpaperToRestore,
+                        NativeMethods.SPIF_UPDATEINIFILE | NativeMethods.SPIF_SENDCHANGE
+                    );
+
+                    Debug.WriteLine($"Восстанавливаем обои: {wallpaperToRestore}. Результат: {result}");
+
+                    if (result)
+                    {
+                        Debug.WriteLine("✓ Обои пользователя успешно восстановлены");
+                    }
+                    else
+                    {
+                        Debug.WriteLine("✗ Не удалось восстановить обои пользователя");
                     }
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine("Файл оригинальных обоев не найден");
+                    Debug.WriteLine("Не удалось найти обои для восстановления");
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Ошибка восстановления обоев: {ex.Message}");
+                Debug.WriteLine($"✗ Ошибка при восстановлении обоев: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Читает путь к текущим обоям из реестра Windows
+        /// </summary>
+        private string GetCurrentWallpaperPathFromRegistry()
+        {
+            try
+            {
+                using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop"))
+                {
+                    if (key != null)
+                    {
+                        // В реестре путь хранится в значении "Wallpaper"
+                        string wallpaperPath = key.GetValue("Wallpaper") as string;
+
+                        if (!string.IsNullOrEmpty(wallpaperPath))
+                        {
+                            Debug.WriteLine($"Прочитан путь из реестра: {wallpaperPath}");
+                            return wallpaperPath;
+                        }
+                        else
+                        {
+                            Debug.WriteLine("Значение Wallpaper в реестре пустое");
+                        }
+                    }
+                    else
+                    {
+                        Debug.WriteLine("Не удалось открыть ключ реестра Control Panel\\Desktop");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Ошибка чтения реестра: {ex.Message}");
+            }
+
+            // Если не удалось прочитать из реестра, пробуем альтернативный метод
+            return GetWallpaperFromIniFile();
+        }
+
+        /// <summary>
+        /// Альтернативный метод получения обоев из system.ini (на всякий случай)
+        /// </summary>
+        private string GetWallpaperFromIniFile()
+        {
+            try
+            {
+                string systemIniPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "system.ini");
+                if (File.Exists(systemIniPath))
+                {
+                    string[] lines = File.ReadAllLines(systemIniPath);
+                    foreach (string line in lines)
+                    {
+                        if (line.StartsWith("Wallpaper=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string wallpaperPath = line.Substring("Wallpaper=".Length).Trim();
+                            Debug.WriteLine($"Прочитан путь из system.ini: {wallpaperPath}");
+                            return wallpaperPath;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Ошибка чтения system.ini: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Проверяет, существуют ли обои по указанному пути
+        /// </summary>
+        public bool IsWallpaperExists(string imagePath)
+        {
+            return !string.IsNullOrEmpty(imagePath) && File.Exists(imagePath);
+        }
+
+        /// <summary>
+        /// Возвращает сохранённый путь к пользовательским обоям
+        /// </summary>
+        public string GetSavedUserWallpaperPath()
+        {
+            return _userWallpaperPath;
         }
     }
 }

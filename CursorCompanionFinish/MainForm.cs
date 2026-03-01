@@ -1161,6 +1161,12 @@ namespace CursorCompanionFinish
                     UpdateStatus("Текущий питомец остановлен");
                 }
 
+                // === ДОБАВЛЯЕМ СОХРАНЕНИЕ ПУТИ К ПОЛЬЗОВАТЕЛЬСКИМ ОБОЯМ ===
+                if (_wallpaperService != null)
+                {
+                    _wallpaperService.SaveCurrentUserWallpaper();
+                }
+
                 string bgPath = GetBackgroundPath(skin.Id);
 
                 Debug.WriteLine($"Путь к фону: {bgPath}");
